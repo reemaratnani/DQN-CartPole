@@ -37,13 +37,17 @@ class DQNAgent():
         self.action_size = env.action_space.n
         self.q_network = QNetwork(self.state_dim, self.action_size)
         self.gamma = 0.97
+        self.eps = 1.0 #Epsilon parameter, probability of selecting action randomly over greedy choice
+
 
         self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
 
     def get_action(self, state):
         q_state = self.q_network.get_q_state(self.sess, [state])
-        action = np.argmax(q_state)
+        action_greedy = np.argmax(q_state)
+        action_random = np.random.randint(self.action_size) 
+        action = action_random if random.random() < self.eps else action_greedy
         return action
 
     def train(self, state, action, next_state, reward, done):
@@ -51,7 +55,9 @@ class DQNAgent():
         q_next_state = (1-done) * q_next_state
         q_target = reward + self.gamma *np.max(q_next_state)
         self.q_network.update_model(self.sess, [state], [action], [q_target])
-
+        # Multiply decay constant with epsilon
+        #minimum value for epsilon if our training needs more exploration
+        if done: self.eps = max(0.1, 0.99*self.eps)
     def __del__(self):
         self.sess.close()
 
@@ -62,7 +68,7 @@ class DQNAgent():
 
 
 agent = DQNAgent(env)
-episodes = 200
+episodes = 400
 for ep in range(episodes):
     state= env.reset()
     total_reward = 0
