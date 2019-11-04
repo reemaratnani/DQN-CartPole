@@ -29,7 +29,18 @@ class QNetwork():
     def get_q_state(self, session, state):
         q_state = session.run(self.q_state, feed_dict = {self.state_in: state})
         return q_state
+      
+class Replay():
+    def __init__(self, maxlen):
+        self.buffer = deque(maxlen=maxlen)
 
+    def add(self,experience):
+        self.buffer.append(experience)
+    
+    def sample(self, batch):
+        sample_size = min(len(self.buffer), batch)
+        samples = random.choices(self.buffer, k=sample_size)
+        return map(list, zip(*samples))
 
 class DQNAgent():
     def __init__(self, env):
@@ -37,6 +48,7 @@ class DQNAgent():
         self.action_size = env.action_space.n
         self.q_network = QNetwork(self.state_dim, self.action_size)
         self.gamma = 0.97
+        self.replay= Replay(maxlen=10000)
         self.eps = 1.0 #Epsilon parameter, probability of selecting action randomly over greedy choice
 
 
@@ -51,10 +63,12 @@ class DQNAgent():
         return action
 
     def train(self, state, action, next_state, reward, done):
-        q_next_state = self.q_network.get_q_state(self.sess, [next_state])
-        q_next_state = (1-done) * q_next_state
-        q_target = reward + self.gamma *np.max(q_next_state)
-        self.q_network.update_model(self.sess, [state], [action], [q_target])
+        self.replay.add((state, action, next_state, reward, done))
+        states, actions, next_states, rewards, dones = self.replay.sample(50)
+        q_next_states = self.q_network.get_q_state(self.sess, next_states)
+        q_next_states[dones] = np.zeros([self.action_size])
+        q_targets = rewards + self.gamma *np.max(q_next_states, axis=1)
+        self.q_network.update_model(self.sess, states, actions, q_targets)
         # Multiply decay constant with epsilon
         #minimum value for epsilon if our training needs more exploration
         if done: self.eps = max(0.1, 0.99*self.eps)
@@ -68,7 +82,7 @@ class DQNAgent():
 
 
 agent = DQNAgent(env)
-episodes = 400
+episodes = 100
 for ep in range(episodes):
     state= env.reset()
     total_reward = 0
